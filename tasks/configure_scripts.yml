@@ -1,0 +1,20 @@
+
+- name: "Create scripts directory for {{ service_name }}/{{ service_id }}"
+  file:
+    path: "{{ service_path }}/bin"
+    state: directory
+    mode: 0750
+
+- name: "Copy scripts for {{ service_name }}/{{ service_id }}"
+  template:
+    src: "bin/{{ script }}.j2"
+    dest: "{{ service_path }}/bin/{{ script }}"
+    owner: "root"
+    group: "root"
+    mode: "0750"
+  with_items:
+    - "backup.sh"
+    - "restart.sh"
+    - "update.sh"
+  loop_control:
+    loop_var: script

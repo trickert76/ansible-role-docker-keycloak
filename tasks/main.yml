@@ -1,0 +1,19 @@
+# role: docker_keycloak
+---
+- name: "Define service settings"
+  set_fact:
+    service_name: "Keycloak"
+  tags:
+    - service_keycloak
+
+- name: "Configure {{ service_name }} instances"
+  include_tasks: loop_instance.yml
+  args:
+    apply:
+      tags:
+        - service_keycloak
+  loop: "{{ keycloak_services | default({}) | dict2items }}"
+  loop_control:
+    loop_var: instance
+  tags:
+    - service_keycloak

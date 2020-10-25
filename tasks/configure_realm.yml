@@ -1,0 +1,118 @@
+---
+- name: "Copy realm {{ keycloak_realm.key }} for {{ service_name }}"
+  template:
+    src: "{{ template.src }}"
+    dest: "{{ template.dest }}"
+    owner: "{{ template.owner }}"
+    group: "{{ template.group }}"
+    mode: "{{ template.mode }}"
+  with_items:
+    - {
+        src: "realm.json.j2",
+        dest: "{{ service_path }}/realm-{{ keycloak_realm.key }}.json",
+        owner: 'root',
+        group: 'root',
+        mode: '0640'
+      }
+  loop_control:
+    loop_var: template
+  when: "keycloak_realm.key != 'master'"
+
+- name: "Create Token for service {{ service_name }}"
+  uri:
+    url: "{{ instance.value.url }}/auth/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      username: "{{ instance.value.admin_user }}"
+      password: "{{ instance.value.admin_pass }}"
+      grant_type: "password"
+      client_id: "admin-cli"
+  register: keycloak_token
+  when: "keycloak_realm.key != 'master'"
+
+- name: "Find out, if Realm {{ keycloak_realm.key }} for service {{ service_name }} exists"
+  uri:
+    url: "{{ instance.value.url }}/auth/admin/realms/{{ keycloak_realm.key }}"
+    method: GET
+    status_code:
+     - 200
+     - 404
+    headers:
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+  register: keycloak_realm_exists
+  when: "keycloak_realm.key != 'master'"
+
+- name: "Update Token for service {{ service_name }}"
+  uri:
+    url: "{{ instance.value.url }}/auth/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      username: "{{ instance.value.admin_user }}"
+      password: "{{ instance.value.admin_pass }}"
+      grant_type: "password"
+      client_id: "admin-cli"
+  register: keycloak_token
+  when: "keycloak_realm.key != 'master'"
+
+- name: "Create Realm {{ keycloak_realm.key }} for service {{ service_name }}"
+  uri:
+    url: "{{ instance.value.url }}/auth/admin/realms"
+    method: POST
+    src: "{{ service_path }}/realm-{{ keycloak_realm.key }}.json"
+    remote_src: "yes"
+    status_code:
+     - 200
+     - 201
+    headers:
+      Content-type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+  register: keycloak_realm_create
+  when: "keycloak_realm.key != 'master' and keycloak_realm_exists.status == 404"
+
+- name: "Update Realm {{ keycloak_realm.key }} for service {{ service_name }}"
+  uri:
+    url: "{{ instance.value.url }}/auth/admin/realms/{{ keycloak_realm.key }}"
+    method: PUT
+    src: "{{ service_path }}/realm-{{ keycloak_realm.key }}.json"
+    remote_src: "yes"
+    return_content: "yes"
+    status_code:
+     - 200
+     - 204
+    headers:
+      Content-type: "application/json"
+      Accept: "application/json"
+      Authorization: "Bearer {{ keycloak_token.json.access_token }}"
+  register: keycloak_realm_create
+  when: "keycloak_realm.key != 'master' and keycloak_realm_exists.status == 200"
+
+- name: "Create {{ service_name }} groups for realm {{ keycloak_realm.key }}"
+  keycloak_group:
+    name: "{{ keycloak_group.key }}"
+    realm: "{{ keycloak_realm.key }}"
+    state: present
+    auth_client_id: admin-cli
+    auth_keycloak_url: "{{ instance.value.url }}/auth"
+    auth_realm: master
+    auth_username: "{{ instance.value.admin_user }}"
+    auth_password: "{{ instance.value.admin_pass }}"
+  loop: "{{ keycloak_realm.value.groups | default({}) | dict2items }}"
+  loop_control:
+    loop_var: keycloak_group
+
+- name: "Create {{ service_name }} clients for realm {{ keycloak_realm.key }}"
+  keycloak_client:
+    auth_client_id: admin-cli
+    auth_keycloak_url: "{{ instance.value.url }}/auth"
+    auth_realm: master
+    auth_username: "{{ instance.value.admin_user }}"
+    auth_password: "{{ instance.value.admin_pass }}"
+    client_id: "{{ keycloak_client.key }}"
+    state: present
+  loop: "{{ keycloak_realm.value.clients | default({}) | dict2items }}"
+  loop_control:
+    loop_var: keycloak_client

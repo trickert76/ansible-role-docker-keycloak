@@ -1,0 +1,24 @@
+#!/bin/sh
+
+{% if ( 'local' in service_database.location ) %}
+cd "{{ service_path }}"
+
+BACKUP_PATH={{ backup_local_path }}/keycloak/{{ service_id }}/`date +'%Y%m%d-%H%M%S'`
+mkdir -p "${BACKUP_PATH}"
+
+{% if ('postgres' in service_database.type) %}
+# PostgeSQL Backup
+docker-compose exec {{ service_database.host }} sh -c 'pg_dump -d $POSTGRES_DB -U $POSTGRES_USER -F d -v -C -c --if-exists -f /var/lib/postgresql/data/backup.dir'
+tar -czf "${BACKUP_PATH}/database.sql.gz {{ service_path }}/data/db/backup.dir"
+rm -rf {{ service_path }}/data/db/backup.dir
+
+{% elif ( 'mariadb' in service_database.type ) %}
+# MariaDB Backup
+docker-compose exec {{ service_database.host }} sh -c 'mysqldump -u$MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE' | gzip > "${BACKUP_PATH}/database.sql.gz"
+
+{% endif %}
+{% else %}
+# Backup via Cluster
+{% endif %}
+
+#eof

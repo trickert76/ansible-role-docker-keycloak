@@ -1,0 +1,36 @@
+---
+- name: "Create MariaDB database"
+  mysql_db:
+    name: "{{ service_database_name }}"
+    encoding: "utf8mb4"
+    collation: "utf8mb4_general_ci"
+    state: present
+  delegate_to: "{{ service_database.host }}"
+  when: "'mariadb' in service_database.type"
+
+- name: "Create MariaDB database user"
+  mysql_user:
+    name: "{{ service_database_user }}"
+    password: "{{ service_database_pass }}"
+    priv: "{{ service_database_name }}.*:ALL"
+    host: "%"
+    state: present
+  no_log: true
+  delegate_to: "{{ service_database.host }}"
+  when: "'mariadb' in service_database.type"
+
+- name: "Create PostgreSQL database"
+  include_role:
+    name: trw.postgres.database
+    apply:
+      delegate_to: "{{ service_database.host }}"
+  vars:
+    postgres_database_host: "{{ service_database.host }}"
+    postgres_database_post: "{{ service_database.port }}"
+    postgres_database_create_database: true
+    postgres_database_schema: "public"
+    postgres_database_name: "{{ service_database_name }}"
+    postgres_database_createuser: true
+    postgres_database_username: "{{ service_database_user }}"
+    postgres_database_password: "{{ service_database_pass }}"
+  when: "'postgres' in service_database.type"

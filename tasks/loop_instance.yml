@@ -1,0 +1,122 @@
+# role: docker_keycloak
+---
+- name: "Define Facts for {{ instance.key }} of {{ service_name }}"
+  set_fact:
+    service_id: "{{ instance.key }}"
+    service_path: "{{ service_keycloak.base_dir }}/{{ instance.key }}"
+    service_port: "{{ instance.value.port | default(service_keycloak.port) }}"
+    service_mail: "{{ instance.value.mail | default(service_keycloak.postmaster) }}"
+    service_database: "{{ instance.value.database | default(service_keycloak.database) }}"
+    service_database_name: "{{ instance.key }}"
+    service_database_user: "{{ instance.key }}"
+    service_domain: "{{ instance.value.name }}"
+    service_scheme: "{{ instance.value.scheme | default(service_keycloak.scheme) }}"
+    service_timezone: "{{ instance.value.timezone | default(service_keycloak.timezone) }}"
+    service_subnet_ipv4: "{{ '172.111.0.0/16' | ipv4('network/prefix') }}"
+    service_subnet_ipv6: "{{ 'fc00:1110:' }}"
+    service_subnet_port_fragment: "{{ instance.value.port % 1110 }}"
+
+- name: "Create Facts for {{ service_id }} of {{ service_name }}"
+  vars:
+    tmp_value: "fc00::/64"
+    hex_value: "{{ ((tmp_value | ipv6('network/prefix') | ipaddr(service_subnet_port_fragment)).split('/') | first ).split(':') | last | default('0',true) }}"
+  set_fact:
+    service_instance_subnet_ipv4: "{{ service_subnet_ipv4 | ipsubnet(24,service_subnet_port_fragment) }}"
+    service_instance_subnet_ipv6: "{{ ''.join((service_subnet_ipv6,hex_value,'::/96')) | ipv6('network/prefix') }}"
+
+- name: "Create directory for {{ service_id }} of {{ service_name }}"
+  file:
+    path: "{{ directory.path }}"
+    owner: "{{ directory.owner | default('root') }}"
+    group: "{{ directory.group | default('root') }}"
+    mode: "{{ directory.mode | default('0750') }}"
+    state: "directory"
+  with_items:
+    - path: "{{ service_path }}"
+    - path: "{{ service_path }}/conf"
+  loop_control:
+    loop_var: directory
+
+#-----
+- name: "Check password cache"
+  stat:
+    path: "{{ service_path }}/conf/.password"
+  register: password_cache
+- name: "Write password to cache"
+  copy:
+    content: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+    dest: "{{ service_path }}/conf/.password"
+    owner: root
+    group: root
+    mode: '0400'
+  when: "not password_cache.stat.exists"
+- name: "Read password from cache"
+  command: "cat {{ service_path }}/conf/.password"
+  register: service_database_pass_cat
+  changed_when: "service_database_pass_cat.rc != 0"
+- name: "Define Password"
+  set_fact:
+    service_database_pass: "{{ service_database_pass_cat.stdout }}"
+#-----
+
+- name: "Configure local database"
+  include_tasks: configure_database_local.yml
+  when: "'local' in service_database.location"
+
+- name: "Configure remote database"
+  include_tasks: configure_database_remote.yml
+  when: "'remote' in service_database.location"
+
+#-----
+
+- name: "Copy docker-compose and env file for {{ service_id }} of {{ service_name }}"
+  template:
+    src: "{{ template.src }}"
+    dest: "{{ template.dest }}"
+    owner: "{{ template.owner | default('root') }}"
+    group: "{{ template.group | default('root') }}"
+    mode: "{{ template.mode | default('0640') }}"
+  with_items:
+    - src: "docker-compose.yml.j2"
+      dest: "{{ service_path }}/docker-compose.yml"
+    - src: "env.j2"
+      dest: "{{ service_path }}/.env"
+  loop_control:
+    loop_var: template
+  register: instance_changes
+
+- name: "Apply Service {{ service_id }} of {{ service_name }} to Update List"
+  lineinfile:
+    create: yes
+    owner: "root"
+    group: "root"
+    mode: "0640"
+    dest: "/srv/docker/services.{{ inventory_hostname }}"
+    regexp: "^{{ service_path }}"
+    line: "{{ service_path }}"
+
+- name: "Run docker-compose pull for {{ service_id }} of {{ service_name }}"
+  shell: "cd {{ service_path }} && docker-compose pull"
+  register: docker_pull
+  changed_when: "'extract' in docker_pull.stderr"
+
+- name: "Start all services for {{ service_id }} of {{ service_name }}"
+  shell: "cd {{ service_path }} && docker-compose up -d"
+  register: docker_run
+  changed_when: "'Recreating' in docker_run.stderr"
+  when: docker_pull.changed or instance_changes.changed
+
+- name: "Configure Scripts for {{ service_id }} of {{ service_name }}"
+  include_tasks: configure_scripts.yml
+
+- name: "Configure ReverseProxy for {{ service_id }} of {{ service_name }}"
+  include_tasks: configure_reverseproxy.yml
+  loop: "{{ instance.value.reverseproxy | default({}) | dict2items }}"
+  loop_control:
+    loop_var: reverse_proxy_instance
+
+- name: "Configure Realms for {{ service_id }} of {{ service_name }}"
+  include_tasks: configure_realm.yml
+  loop: "{{ instance.value.realms | default({}) | dict2items }}"
+  loop_control:
+    loop_var: keycloak_realm

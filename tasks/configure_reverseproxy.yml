@@ -1,0 +1,24 @@
+---
+- name: "Configure ReverseProxy for {{ service_id }} on {{ reverse_proxy_instance.key }}"
+  include_role:
+    name: trw.docker.reverseproxy-add
+    apply:
+      delegate_to: "{{ reverse_proxy_instance.key }}"
+  vars:
+    reverse_proxy_host: "{{ reverse_proxy_instance.key }}"
+    reverse_proxy_url: "{{ service_scheme }}://{{ network.vpn.ipv4_address | ipwrap }}:{{ service_port }}/"
+    reverse_proxy_template: "reverseproxy-default.conf.j2"
+    reverse_proxy_domain: "{{ reverse_proxy_instance.value.domain }}"
+    reverse_proxy_aliases: "{{ reverse_proxy_instance.value.aliases | default([]) }}"
+    reverse_proxy_mail: "{{ reverse_proxy_instance.value.mail | default(service_mail) }}"
+
+- name: "Configure ReverseProxy Monitoring for {{ service_id }} on {{ reverse_proxy_instance.key }}"
+  include_role:
+    name: trw.monitoring.node-add
+    apply:
+      delegate_to: "{{ reverse_proxy_instance.key }}"
+  vars:
+    monitor_template: "icinga2/conf.d/httpcheck_default.conf.j2"
+    monitor_configfilename: "httpcheck_{{ reverse_proxy_instance.value.domain }}.conf"
+    monitor_domain: "{{ reverse_proxy_instance.value.domain }}"
+    monitor_uripath: "/"

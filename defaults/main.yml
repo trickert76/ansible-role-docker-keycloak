@@ -1,0 +1,12 @@
+---
+service_keycloak:
+  base_dir: /srv/docker/keycloak
+  port: 1110
+  scheme: https
+  postmaster: postmaster@example.de
+  timezone: Europe/Berlin
+  database:
+    type: postgres
+    location: local
+    host: database
+    port: 5432

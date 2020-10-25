@@ -1,0 +1,27 @@
+{
+  "id": "{{ keycloak_realm.key }}",
+  "realm": "{{ keycloak_realm.key }}",
+  "displayName": "{{ keycloak_realm.value.name }}",
+{% if keycloak_realm.value.mail is defined %}
+  "smtpServer": {
+    "password": "{{ keycloak_realm.value.mail.password }}",
+    "starttls": "{{ keycloak_realm.value.mail.starttls }}",
+    "auth": "{{ keycloak_realm.value.mail.auth }}",
+    "port": "{{ keycloak_realm.value.mail.port }}",
+    "host": "{{ keycloak_realm.value.mail.host }}",
+    "replyTo": "{{ keycloak_realm.value.mail.replyto }}",
+    "from": "{{ keycloak_realm.value.mail.from }}",
+    "fromDisplayName": "{{ keycloak_realm.value.mail.from_name }}",
+    "ssl": "{{ keycloak_realm.value.mail.ssl }}",
+    "user": "{{ keycloak_realm.value.mail.user }}"
+  },
+{% endif %}
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true
+}

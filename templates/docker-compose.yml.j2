@@ -1,0 +1,50 @@
+version: '2.3'
+
+services:
+  keycloak:
+    image: jboss/keycloak
+    restart: unless-stopped
+    command: -b 0.0.0.0 -Djboss.bind.address.private=127.0.0.1
+{% if ('local' in service_database.location) %}
+    depends_on:
+      - {{ service_database.host }}
+{% endif %}
+    env_file:
+      - .env
+    ports:
+      - "{{ service_port }}:8443"
+
+{% if ('local' in service_database.location) %}
+  {{ service_database.host }}:
+    restart: unless-stopped
+{% if ('postgres' in service_database.type) %}
+    image: postgres:latest
+    volumes:
+      - database-vol:/var/lib/postgresql/data
+{% elif ( 'mariadb' in service_database.type ) %}
+    image: mariadb:latest
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    volumes:
+      - database-vol:/var/lib/mysql
+{% endif %}
+    env_file:
+      - .env
+{% endif %}
+
+{% if ( 'local' in service_database.location ) %}
+volumes:
+  database-vol:
+    driver_opts:
+      type: none
+      device: "{{ service_path }}/data/db"
+      o: bind
+{% endif %}
+
+networks:
+  default:
+    driver: bridge
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: "{{ service_instance_subnet_ipv4 }}"
+        - subnet: "{{ service_instance_subnet_ipv6 }}"
